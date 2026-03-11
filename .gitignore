@@ -1,0 +1,19 @@
+# QEMU build artifacts
+qemu-*/
+
+# Compiled files
+*.o
+*.a
+*.so
+*.out
+
+# Executables
+*.exe
+
+# IDE
+.vscode/
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db
