@@ -1,5 +1,22 @@
 # QEMU build artifacts
 qemu-*/
+*.tar.xz
+*.tar.gz
+
+# RISC-V toolchain
+riscv64-unknown-elf-gcc*/
+
+# rCore-Tutorial (third party)
+rCore-Tutorial*/
+
+# Chapter exercises (with build artifacts)
+chapter0-exercises/
+chapter1-exercise/
+
+# Compressed files
+*.zip
+*.tar.gz
+*.tar.xz
 
 # Compiled files
 *.o
