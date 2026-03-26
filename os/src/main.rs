@@ -1,46 +1,88 @@
-#![no_main]
-#![no_std]
+//! The main module and entrypoint
+//!
+//! Various facilities of the kernels are implemented as submodules. The most
+//! important ones are:
+//!
+//! - [`trap`]: Handles all cases of switching from userspace to the kernel
+//! - [`syscall`]: System call handling and implementation
+//!
+//! The operating system also starts in this module. Kernel code starts
+//! executing from `entry.asm`, after which [`rust_main()`] is called to
+//! initialize various pieces of functionality. (See its source code for
+//! details.)
+//!
+//! We then call [`batch::run_next_app()`] and for the first time go to
+//! userspace.
 
-#[macro_use]
-mod console;
-mod lang_items;
-mod sbi;
+#![deny(missing_docs)]
+#![deny(warnings)]
+#![no_std]
+#![no_main]
 
 use core::arch::global_asm;
+
+use log::*;
+#[macro_use]
+mod console;
+pub mod batch;
+mod lang_items;
+mod logging;
+mod sbi;
+mod sync;
+pub mod syscall;
+pub mod trap;
+
 global_asm!(include_str!("entry.asm"));
+global_asm!(include_str!("link_app.S"));
 
-#[unsafe(no_mangle)]
-pub fn rust_main() -> ! {
-    clear_bss();
-    println!("Hello, world!");
-    print_memory_layout();
-    panic!("Shutdown machine!");
-}
-
+/// clear BSS segment
 fn clear_bss() {
     unsafe extern "C" {
-        fn sbss();
-        fn ebss();
+        safe fn sbss();
+        safe fn ebss();
     }
-    (sbss as *const () as usize..ebss as *const () as usize).for_each(|a| unsafe {
-        (a as *mut u8).write_volatile(0)
-    });
+    unsafe {
+        core::slice::from_raw_parts_mut(sbss as *const () as usize as *mut u8, ebss as *const () as usize - sbss as *const () as usize)
+            .fill(0);
+    }
 }
 
-fn print_memory_layout() {
+/// the rust entry-point of os
+#[unsafe(no_mangle)]
+pub fn rust_main() -> ! {
     unsafe extern "C" {
-        fn stext();
-        fn etext();
-        fn srodata();
-        fn erodata();
-        fn sdata();
-        fn edata();
-        fn sbss();
-        fn ebss();
+        safe fn stext(); // begin addr of text segment
+        safe fn etext(); // end addr of text segment
+        safe fn srodata(); // start addr of Read-Only data segment
+        safe fn erodata(); // end addr of Read-Only data ssegment
+        safe fn sdata(); // start addr of data segment
+        safe fn edata(); // end addr of data segment
+        safe fn sbss(); // start addr of BSS segment
+        safe fn ebss(); // end addr of BSS segment
+        safe fn boot_stack_lower_bound(); // stack lower bound
+        safe fn boot_stack_top(); // stack top
     }
-
-    info!(".text   [{:#x}, {:#x})", stext as *const () as usize, etext as *const () as usize);
-    debug!(".rodata [{:#x}, {:#x})", srodata as *const () as usize, erodata as *const () as usize);
-    warn!(".data   [{:#x}, {:#x})", sdata as *const () as usize, edata as *const () as usize);
-    error!(".bss    [{:#x}, {:#x})", sbss as *const () as usize, ebss as *const () as usize);
+    clear_bss();
+    logging::init();
+    println!("[kernel] Hello, world!");
+    trace!(
+        "[kernel] .text [{:#x}, {:#x})",
+        stext as *const () as usize, etext as *const () as usize
+    );
+    debug!(
+        "[kernel] .rodata [{:#x}, {:#x})",
+        srodata as *const () as usize, erodata as *const () as usize
+    );
+    info!(
+        "[kernel] .data [{:#x}, {:#x})",
+        sdata as *const () as usize, edata as *const () as usize
+    );
+    warn!(
+        "[kernel] boot_stack top=bottom={:#x}, lower_bound={:#x}",
+        boot_stack_top as *const () as usize, boot_stack_lower_bound as *const () as usize
+    );
+    error!("[kernel] .bss [{:#x}, {:#x})", sbss as *const () as usize, ebss as *const () as usize);
+    trap::init();
+    batch::init();
+    batch::run_next_app();
 }

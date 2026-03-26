@@ -1,13 +1,25 @@
-.PHONY: run build clean
+# Building
+TARGET := riscv64gc-unknown-none-elf
+MODE := release
+KERNEL_ELF := target/$(TARGET)/$(MODE)/os
 
-APP=target/riscv64gc-unknown-none-elf/release/os
-BOOTLOADER=../bootloader/rustsbi-qemu.bin
+# BOARD
+BOARD ?= qemu
+SBI ?= rustsbi
+BOOTLOADER := ../bootloader/$(SBI)-$(BOARD).bin
 
-build:
+kernel:
+	cp src/linker-$(BOARD).ld src/linker.ld
 	cargo build --release
-
-run: build
-	qemu-system-riscv64 -machine virt -nographic -bios $(BOOTLOADER) -kernel $(APP)
 
 clean:
 	cargo clean
+
+run: kernel
+	timeout --foreground 30s qemu-system-riscv64 \
+		-machine virt \
+		-nographic \
+		-bios $(BOOTLOADER) \
+		-kernel $(KERNEL_ELF)
+
+.PHONY: build kernel clean run
