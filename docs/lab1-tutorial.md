@@ -220,7 +220,374 @@ clean:
 	cargo clean
 ```
 
-注意：LOG 参数的实际控制需要在代码中实现条件编译或运行时检查。
+**注意**：上面的 Makefile 只是定义了 `LOG` 变量，但还**没有真正实现**日志等级控制。接下来的第五步将教你如何实现。
+
+### 第五步：实现日志等级控制（可选但推荐）
+
+#### 5.1 为什么需要日志等级控制？
+
+在实际开发中，不同场景需要不同的日志详细程度：
+- **调试时**：需要看到所有 DEBUG 和 TRACE 日志
+- **正常运行**：只需要 INFO 和 WARN
+- **发布版本**：只显示 ERROR
+
+日志等级控制可以让你**在不修改代码**的情况下调整输出详细程度。
+
+#### 5.2 方案选择
+
+有两种实现方式：
+
+| 方案 | 运行时开销 | 灵活性 | 实现难度 | 推荐度 |
+|------|-----------|--------|----------|--------|
+| **运行时检查** | 极小（一次比较） | ⭐⭐⭐⭐⭐ | 简单 | ✅ 强烈推荐 |
+| **条件编译** | 零 | ⭐⭐ | 复杂 | 可选 |
+
+**推荐**：先实现运行时检查，满足需求后可以考虑优化为条件编译。
+
+#### 5.3 实现方案 A：运行时检查（推荐）
+
+##### 步骤 1：定义日志等级
+
+在 `console.rs` 中添加等级定义：
+
+```rust
+// 日志等级定义（数值越大，优先级越低）
+const LOG_ERROR: u8 = 1;
+const LOG_WARN: u8 = 2;
+const LOG_INFO: u8 = 3;
+const LOG_DEBUG: u8 = 4;
+const LOG_TRACE: u8 = 5;
+const LOG_OFF: u8 = 6;  // 关闭所有日志
+
+// 当前日志等级（可通过 set_log_level 修改）
+static mut LOG_LEVEL: u8 = LOG_INFO;  // 默认 INFO 级别
+```
+
+**为什么用 `u8` 而不是 `enum`？**
+- `u8` 占用空间小（1 字节）
+- 比较操作简单快速
+- 在裸机环境中更轻量
+
+##### 步骤 2：实现等级设置函数
+
+```rust
+// 设置日志等级
+pub fn set_log_level(level: &str) {
+    unsafe {
+        LOG_LEVEL = match level {
+            "ERROR" => LOG_ERROR,
+            "WARN" => LOG_WARN,
+            "INFO" => LOG_INFO,
+            "DEBUG" => LOG_DEBUG,
+            "TRACE" => LOG_TRACE,
+            "OFF" => LOG_OFF,
+            _ => LOG_INFO,  // 默认值
+        };
+    }
+}
+
+// 获取当前日志等级
+pub fn get_log_level() -> u8 {
+    unsafe { LOG_LEVEL }
+}
+```
+
+**为什么用 `unsafe`？**
+- 裸机环境中没有可用的同步原语
+- 单核环境下是安全的
+- 在 main 函数开始时设置，之后不再修改
+
+##### 步骤 3：修改日志宏，添加等级检查
+
+```rust
+// 辅助宏：检查是否应该输出
+macro_rules! should_log {
+    ($level:expr) => {
+        $crate::console::get_log_level() >= $level
+    };
+}
+
+#[macro_export]
+macro_rules! error {
+    ($fmt:literal $(, $($arg:tt)+)?) => {
+        if $crate::console::should_log!($crate::console::LOG_ERROR) {
+            $crate::console::print_color(
+                $crate::console::ANSI_COLOR_RED,
+                format_args!(concat!("[ERROR] ", $fmt, "\n") $(, $($arg)+)?)
+            );
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! warn {
+    ($fmt:literal $(, $($arg:tt)+)?) => {
+        if $crate::console::should_log!($crate::console::LOG_WARN) {
+            $crate::console::print_color(
+                $crate::console::ANSI_COLOR_YELLOW,
+                format_args!(concat!("[WARN] ", $fmt, "\n") $(, $($arg)+)?)
+            );
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! info {
+    ($fmt:literal $(, $($arg:tt)+)?) => {
+        if $crate::console::should_log!($crate::console::LOG_INFO) {
+            $crate::console::print_color(
+                $crate::console::ANSI_COLOR_BLUE,
+                format_args!(concat!("[INFO] ", $fmt, "\n") $(, $($arg)+)?)
+            );
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! debug {
+    ($fmt:literal $(, $($arg:tt)+)?) => {
+        if $crate::console::should_log!($crate::console::LOG_DEBUG) {
+            $crate::console::print_color(
+                $crate::console::ANSI_COLOR_GREEN,
+                format_args!(concat!("[DEBUG] ", $fmt, "\n") $(, $($arg)+)?)
+            );
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! trace {
+    ($fmt:literal $(, $($arg:tt)+)?) => {
+        if $crate::console::should_log!($crate::console::LOG_TRACE) {
+            $crate::console::print_color(
+                $crate::console::ANSI_COLOR_GRAY,
+                format_args!(concat!("[TRACE] ", $fmt, "\n") $(, $($arg)+)?)
+            );
+        }
+    };
+}
+```
+
+##### 步骤 4：在 main.rs 中初始化日志等级
+
+```rust
+#[unsafe(no_mangle)]
+pub fn rust_main() -> ! {
+    clear_bss();
+    console::set_log_level("INFO");  // 设置日志等级
+    println!("Hello, world!");
+    print_memory_layout();
+    panic!("Shutdown machine!");
+}
+```
+
+##### 步骤 5：修改 Makefile 传递 LOG 参数
+
+```makefile
+.PHONY: run build clean
+
+APP=target/riscv64gc-unknown-none-elf/release/os
+BOOTLOADER=../bootloader/rustsbi-qemu.bin
+LOG?=INFO  # 默认 INFO 级别
+
+build:
+	cargo build --release
+
+run: build
+	@echo "Running with LOG=$(LOG)..."
+	qemu-system-riscv64 -machine virt -nographic -bios $(BOOTLOADER) -kernel $(APP)
+
+# 直接在 Makefile 中修改代码（简单方法）
+set-log:
+	@sed -i 's/console::set_log_level("[^"]*");/console::set_log_level("$(LOG)");/' src/main.rs
+
+clean:
+	cargo clean
+```
+
+**使用方法**：
+```bash
+make run LOG=ERROR   # 只显示 ERROR
+make run LOG=INFO    # 显示 INFO, WARN, ERROR
+make run LOG=DEBUG   # 显示 DEBUG 及以上
+```
+
+**注意**：这个简单方案需要修改源代码。更高级的方案可以在编译时通过环境变量传递。
+
+#### 5.4 实现方案 B：条件编译（高级，零开销）
+
+如果追求极致性能，可以使用条件编译，在编译时完全删除不需要的日志代码。
+
+##### 步骤 1：修改 Makefile
+
+```makefile
+LOG?=INFO
+RUSTFLAGS?=--cfg log_level="$(LOG)"
+
+build:
+	RUSTFLAGS="$(RUSTFLAGS)" cargo build --release
+```
+
+##### 步骤 2：使用 cfg 属性
+
+```rust
+// 在 console.rs 中
+#[cfg(log_level = "ERROR")]
+const CURRENT_LOG_LEVEL: u8 = 1;
+
+#[cfg(log_level = "WARN")]
+const CURRENT_LOG_LEVEL: u8 = 2;
+
+#[cfg(log_level = "INFO")]
+const CURRENT_LOG_LEVEL: u8 = 3;
+
+#[cfg(log_level = "DEBUG")]
+const CURRENT_LOG_LEVEL: u8 = 4;
+
+#[cfg(log_level = "TRACE")]
+const CURRENT_LOG_LEVEL: u8 = 5;
+
+// 默认值
+#[cfg(not(any(
+    log_level = "ERROR",
+    log_level = "WARN",
+    log_level = "INFO",
+    log_level = "DEBUG",
+    log_level = "TRACE"
+)))]
+const CURRENT_LOG_LEVEL: u8 = 3;
+```
+
+**优点**：编译时就知道日志等级，不满足条件的日志代码会被完全删除。
+
+**缺点**：修改日志等级需要重新编译。
+
+#### 5.5 日志等级使用示例
+
+```rust
+fn main() {
+    // 设置为 ERROR 级别
+    console::set_log_level("ERROR");
+
+    error!("This will print");    // ✓ 输出
+    warn!("This won't print");    // ✗ 不输出
+    info!("This won't print");    // ✗ 不输出
+
+    // 修改为 DEBUG 级别
+    console::set_log_level("DEBUG");
+
+    error!("This will print");    // ✓ 输出
+    warn!("This will print");     // ✓ 输出
+    info!("This will print");     // ✓ 输出
+    debug!("This will print");    // ✓ 输出
+    trace!("This won't print");   // ✗ 不输出
+}
+```
+
+#### 5.6 日志等级过滤规则
+
+| 设置等级 | ERROR | WARN | INFO | DEBUG | TRACE |
+|----------|-------|------|------|-------|-------|
+| **ERROR** | ✅ | ❌ | ❌ | ❌ | ❌ |
+| **WARN** | ✅ | ✅ | ❌ | ❌ | ❌ |
+| **INFO** | ✅ | ✅ | ✅ | ❌ | ❌ |
+| **DEBUG** | ✅ | ✅ | ✅ | ✅ | ❌ |
+| **TRACE** | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **OFF** | ❌ | ❌ | ❌ | ❌ | ❌ |
+
+**规则**：只输出**等级大于或等于**当前设置等级的日志。
+
+#### 5.7 性能分析
+
+**运行时检查方案**：
+- 每次日志调用：1 次比较 + 1 次分支
+- 开销：< 10 纳秒（现代 CPU）
+- 对于操作系统内核来说，这个开销可以忽略不计
+
+**条件编译方案**：
+- 不满足条件的日志：0 开销（代码被删除）
+- 适合对性能极其敏感的场景
+
+#### 5.8 完整示例代码
+
+查看 `console.rs` 的完整实现：
+
+```rust
+// console.rs 完整示例
+use core::fmt;
+
+const ANSI_COLOR_RED: &str = "\x1b[31m";
+const ANSI_COLOR_GREEN: &str = "\x1b[32m";
+const ANSI_COLOR_YELLOW: &str = "\x1b[33m";
+const ANSI_COLOR_BLUE: &str = "\x1b[34m";
+const ANSI_COLOR_GRAY: &str = "\x1b[90m";
+const ANSI_COLOR_RESET: &str = "\x1b[0m";
+
+const LOG_ERROR: u8 = 1;
+const LOG_WARN: u8 = 2;
+const LOG_INFO: u8 = 3;
+const LOG_DEBUG: u8 = 4;
+const LOG_TRACE: u8 = 5;
+
+static mut LOG_LEVEL: u8 = LOG_INFO;
+
+pub fn set_log_level(level: &str) {
+    unsafe {
+        LOG_LEVEL = match level {
+            "ERROR" => LOG_ERROR,
+            "WARN" => LOG_WARN,
+            "INFO" => LOG_INFO,
+            "DEBUG" => LOG_DEBUG,
+            "TRACE" => LOG_TRACE,
+            _ => LOG_INFO,
+        };
+    }
+}
+
+pub fn get_log_level() -> u8 {
+    unsafe { LOG_LEVEL }
+}
+
+pub fn print_color(color: &str, args: fmt::Arguments) {
+    print!("{}{}{}", color, args, ANSI_COLOR_RESET);
+}
+
+// 宏定义...
+```
+
+#### 5.9 测试日志等级功能
+
+```bash
+# 测试 ERROR 级别
+cd os
+sed -i 's/console::set_log_level("[^"]*");/console::set_log_level("ERROR");/' src/main.rs
+make run
+# 预期：只看到 ERROR 日志
+
+# 测试 INFO 级别
+sed -i 's/console::set_log_level("[^"]*");/console::set_log_level("INFO");/' src/main.rs
+make run
+# 预期：看到 INFO, WARN, ERROR 日志
+
+# 测试 TRACE 级别
+sed -i 's/console::set_log_level("[^"]*");/console::set_log_level("TRACE");/' src/main.rs
+make run
+# 预期：看到所有日志
+```
+
+#### 5.10 常见问题
+
+**Q：为什么日志等级是 u8 而不是枚举？**
+A：`u8` 更轻量，比较操作更快。在裸机环境中，性能优先。
+
+**Q：运行时检查会影响性能吗？**
+A：影响极小（< 10ns）。如果你确实需要零开销，可以使用条件编译方案。
+
+**Q：如何动态调整日志等级？**
+A：可以通过 SBI 调用传递参数，或者在调试时通过修改代码。
+
+**Q：日志等级会影响最终二进制大小吗？**
+A：运行时检查不会（所有日志代码都在）。条件编译会（低级日志被删除）。
 
 ## 实验检查清单
 
