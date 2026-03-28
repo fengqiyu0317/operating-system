@@ -11,6 +11,9 @@
 //! It then calls different functionality based on what exactly the exception
 //! was. For example, timer interrupts trigger task preemption, and syscalls go
 //! to [`syscall()`].
+//!
+//! When the kernel is running, `stvec` is switched to `__alltraps_k` so that
+//! interrupts in kernel mode are handled correctly (without sp/sscratch swap).
 
 mod context;
 
@@ -21,13 +24,28 @@ use core::arch::global_asm;
 use riscv::register::{
     mtvec::TrapMode,
     scause::{self, Exception, Interrupt, Trap},
-    sie, stval, stvec,
+    sie, sstatus, stval, stvec,
 };
 
 global_asm!(include_str!("trap.S"));
 
 /// initialize CSR `stvec` as the entry of `__alltraps`
 pub fn init() {
+    set_user_trap_entry();
+}
+
+/// Set `stvec` to kernel trap entry `__alltraps_k`
+fn set_kernel_trap_entry() {
+    unsafe extern "C" {
+        safe fn __alltraps_k();
+    }
+    unsafe {
+        stvec::write(__alltraps_k as usize, TrapMode::Direct);
+    }
+}
+
+/// Set `stvec` to user trap entry `__alltraps`
+fn set_user_trap_entry() {
     unsafe extern "C" {
         safe fn __alltraps();
     }
@@ -46,8 +64,15 @@ pub fn enable_timer_interrupt() {
 #[unsafe(no_mangle)]
 /// handle an interrupt, exception, or system call from user space
 pub fn trap_handler(cx: &mut TrapContext) -> &mut TrapContext {
-    let scause = scause::read(); // get trap cause
-    let stval = stval::read(); // get extra value
+    // Switch stvec to kernel trap entry so interrupts in kernel mode
+    // go through __alltraps_k (no sp/sscratch swap)
+    set_kernel_trap_entry();
+    let scause = scause::read();
+    let stval = stval::read();
+    // Enable S-mode interrupts so timer interrupts are received in kernel mode
+    unsafe {
+        sstatus::set_sie();
+    }
     match scause.cause() {
         Trap::Exception(Exception::UserEnvCall) => {
             cx.sepc += 4;
@@ -73,6 +98,37 @@ pub fn trap_handler(cx: &mut TrapContext) -> &mut TrapContext {
                 "Unsupported trap {:?}, stval = {:#x}!",
                 scause.cause(),
                 stval
+            );
+        }
+    }
+    // Disable S-mode interrupts before returning to user mode
+    unsafe {
+        sstatus::clear_sie();
+    }
+    // Switch stvec back to user trap entry
+    set_user_trap_entry();
+    cx
+}
+
+#[unsafe(no_mangle)]
+/// handle an interrupt or exception from kernel space
+pub fn trap_handler_k(cx: &mut TrapContext) -> &mut TrapContext {
+    let scause = scause::read();
+    let stval = stval::read();
+    match scause.cause() {
+        Trap::Interrupt(Interrupt::SupervisorTimer) => {
+            set_next_trigger();
+            println!(
+                "[kernel] Kernel trap: SupervisorTimer at sepc={:#x}",
+                cx.sepc
+            );
+        }
+        _ => {
+            panic!(
+                "Unsupported kernel trap {:?}, stval = {:#x}, sepc = {:#x}!",
+                scause.cause(),
+                stval,
+                cx.sepc
             );
         }
     }
