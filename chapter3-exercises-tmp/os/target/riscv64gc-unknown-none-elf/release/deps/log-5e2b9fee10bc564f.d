@@ -1,0 +1,10 @@
+/mnt/d/Tomato_Fish/豫文化课/新时代/大二春/操作系统/chapter3-exercises-tmp/os/target/riscv64gc-unknown-none-elf/release/deps/liblog-5e2b9fee10bc564f.rmeta: /home/huawei/.cargo/registry/src/mirrors.tuna.tsinghua.edu.cn-e791a3f93f26854f/log-0.4.29/src/lib.rs /home/huawei/.cargo/registry/src/mirrors.tuna.tsinghua.edu.cn-e791a3f93f26854f/log-0.4.29/src/macros.rs /home/huawei/.cargo/registry/src/mirrors.tuna.tsinghua.edu.cn-e791a3f93f26854f/log-0.4.29/src/serde.rs /home/huawei/.cargo/registry/src/mirrors.tuna.tsinghua.edu.cn-e791a3f93f26854f/log-0.4.29/src/__private_api.rs
+
+/mnt/d/Tomato_Fish/豫文化课/新时代/大二春/操作系统/chapter3-exercises-tmp/os/target/riscv64gc-unknown-none-elf/release/deps/liblog-5e2b9fee10bc564f.rlib: /home/huawei/.cargo/registry/src/mirrors.tuna.tsinghua.edu.cn-e791a3f93f26854f/log-0.4.29/src/lib.rs /home/huawei/.cargo/registry/src/mirrors.tuna.tsinghua.edu.cn-e791a3f93f26854f/log-0.4.29/src/macros.rs /home/huawei/.cargo/registry/src/mirrors.tuna.tsinghua.edu.cn-e791a3f93f26854f/log-0.4.29/src/serde.rs /home/huawei/.cargo/registry/src/mirrors.tuna.tsinghua.edu.cn-e791a3f93f26854f/log-0.4.29/src/__private_api.rs
+
+/mnt/d/Tomato_Fish/豫文化课/新时代/大二春/操作系统/chapter3-exercises-tmp/os/target/riscv64gc-unknown-none-elf/release/deps/log-5e2b9fee10bc564f.d: /home/huawei/.cargo/registry/src/mirrors.tuna.tsinghua.edu.cn-e791a3f93f26854f/log-0.4.29/src/lib.rs /home/huawei/.cargo/registry/src/mirrors.tuna.tsinghua.edu.cn-e791a3f93f26854f/log-0.4.29/src/macros.rs /home/huawei/.cargo/registry/src/mirrors.tuna.tsinghua.edu.cn-e791a3f93f26854f/log-0.4.29/src/serde.rs /home/huawei/.cargo/registry/src/mirrors.tuna.tsinghua.edu.cn-e791a3f93f26854f/log-0.4.29/src/__private_api.rs
+
+/home/huawei/.cargo/registry/src/mirrors.tuna.tsinghua.edu.cn-e791a3f93f26854f/log-0.4.29/src/lib.rs:
+/home/huawei/.cargo/registry/src/mirrors.tuna.tsinghua.edu.cn-e791a3f93f26854f/log-0.4.29/src/macros.rs:
+/home/huawei/.cargo/registry/src/mirrors.tuna.tsinghua.edu.cn-e791a3f93f26854f/log-0.4.29/src/serde.rs:
+/home/huawei/.cargo/registry/src/mirrors.tuna.tsinghua.edu.cn-e791a3f93f26854f/log-0.4.29/src/__private_api.rs:

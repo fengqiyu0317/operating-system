@@ -11,6 +11,7 @@
 
 mod context;
 mod switch;
+mod switch_cost;
 
 #[allow(clippy::module_inception)]
 mod task;
@@ -24,6 +25,7 @@ use switch::__switch;
 use task::{TaskControlBlock, TaskStatus};
 
 pub use context::TaskContext;
+pub use switch_cost::{print_switch_stats, record_switch_cost, mark_switch_start};
 
 /// The task manager, where all the tasks are managed.
 ///
@@ -86,6 +88,7 @@ impl TaskManager {
         drop(inner);
         let mut _unused = TaskContext::zero_init();
         // before this, we should drop local variables that must be dropped manually
+        // Note: run_first_task never returns, so we don't record switch cost here
         unsafe {
             __switch(&mut _unused as *mut TaskContext, next_task_cx_ptr);
         }
@@ -129,12 +132,15 @@ impl TaskManager {
             let next_task_cx_ptr = &inner.tasks[next].task_cx as *const TaskContext;
             drop(inner);
             // before this, we should drop local variables that must be dropped manually
+            mark_switch_start();
             unsafe {
                 __switch(current_task_cx_ptr, next_task_cx_ptr);
             }
+            let _cost = record_switch_cost();
             // go back to user mode
         } else {
             println!("All applications completed!");
+            print_switch_stats();
             shutdown(false);
         }
     }
